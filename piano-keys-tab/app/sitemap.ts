@@ -1,6 +1,10 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 
+// Queries the database, which is only migrated at container start
+// (`prisma migrate deploy` in `npm start`). Never prerender at build time.
+export const dynamic = "force-dynamic";
+
 const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 /**
