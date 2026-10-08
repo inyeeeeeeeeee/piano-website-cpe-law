@@ -1,0 +1,335 @@
+// ---------------------------------------------------------------------------
+// Piano Keys Tab — Prisma schema (SQLite)
+//
+// Notes on design:
+//  * SQLite has no native ENUM type in Prisma, so "enum-like" columns are
+//    Strings validated by Zod (lib/validation.ts) and typed unions
+//    (lib/constants.ts). The allowed values are documented next to each field.
+//  * Search columns are denormalised lowercase copies (searchTitle /
+//    searchTags / searchName) so partial matching can be case-insensitive
+//    without relying on SQLite collation quirks.
+//  * Arrangement content is stored twice: as rendered `content` text and as
+//    `structuredData` (JSON event list) so an interactive piano / MIDI layer
+//    can be added later without rewriting stored songs.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  role         String   @default("USER") // USER | ADMIN
+  avatar       String?
+  bio          String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  songs         Song[]         @relation("SongCreator")
+  versions      SongVersion[]  @relation("VersionCreator")
+  songbooks     Songbook[]
+  ratings       Rating[]
+  comments      Comment[]
+  savedSongs    SavedSong[]
+  settings      UserSettings?
+  notifications Notification[]
+  views         SongView[]
+  reports       Report[]
+  auditLogs     AuditLog[] @relation("AdminActor")
+
+  @@index([role])
+  @@map("users")
+}
+
+model Artist {
+  id         String   @id @default(cuid())
+  name       String
+  searchName String // lowercase, for case-insensitive search
+  slug       String   @unique
+  biography  String?
+  image      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  songs Song[]
+
+  @@index([name])
+  @@map("artists")
+}
+
+model Song {
+  id          String   @id @default(cuid())
+  title       String
+  searchTitle String // lowercase, for case-insensitive search
+  slug        String   @unique
+  artistId    String
+  album       String?
+  releaseYear Int?
+  // Denormalised summary taken from the primary version — used for listing,
+  // filtering and sorting. Versions carry their own authoritative values.
+  difficulty  String   @default("INTERMEDIATE") // BEGINNER | EASY | INTERMEDIATE | ADVANCED | EXPERT
+  difficultyRank Int   @default(3) // 1..5 — mirrors difficulty for fast sorting
+  musicalKey  String   @default("C") // C .. B and Cm .. Bm (see lib/constants.ts)
+  bpm         Int      @default(100)
+  duration    Int? // seconds
+  description String?
+  coverImage  String?
+  tags        String   @default("") // comma separated, lowercase
+  searchTags  String   @default("") // lowercase copy of tags for search
+  status      String   @default("PENDING") // DRAFT | PENDING | PUBLISHED | REJECTED | ARCHIVED
+  isFeatured  Boolean  @default(false)
+  viewCount   Int      @default(0)
+  ratingAvg   Float    @default(0) // cached average of Rating.value
+  ratingCount Int      @default(0)
+  // Attribution / licensing (copyright-safe content, see README §Content policy)
+  attribution String?
+  source      String?
+  license     String?
+  copyright   String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  artist      Artist        @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  createdBy   User?         @relation("SongCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  versions    SongVersion[]
+  ratings     Rating[]
+  comments    Comment[]
+  savedBy     SavedSong[]
+  inSongbooks SongbookSong[]
+  views       SongView[]
+
+  @@index([artistId])
+  @@index([status])
+  @@index([difficulty])
+  @@index([musicalKey])
+  @@index([bpm])
+  @@index([viewCount])
+  @@index([ratingAvg])
+  @@index([createdAt])
+  @@index([searchTitle])
+  @@map("songs")
+}
+
+model SongVersion {
+  id          String   @id @default(cuid())
+  songId      String
+  name        String
+  description String?
+  difficulty  String   @default("INTERMEDIATE") // BEGINNER | EASY | INTERMEDIATE | ADVANCED | EXPERT
+  musicalKey  String   @default("C")
+  bpm         Int      @default(100)
+  status      String   @default("PENDING") // DRAFT | PENDING | PUBLISHED | REJECTED | ARCHIVED
+  order       Int      @default(0)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  song     Song          @relation(fields: [songId], references: [id], onDelete: Cascade)
+  createdBy User?        @relation("VersionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  sections SongSection[]
+
+  @@index([songId])
+  @@index([status])
+  @@map("song_versions")
+}
+
+model SongSection {
+  id        String @id @default(cuid())
+  versionId String
+  name      String // Intro, Verse 1, Chorus, Bridge, Outro, custom…
+  order     Int    @default(0)
+
+  version     SongVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  arrangement Arrangement?
+
+  @@index([versionId])
+  @@map("song_sections")
+}
+
+model Arrangement {
+  id            String   @id @default(cuid())
+  sectionId     String   @unique
+  content       String   @default("") // rendered RH:/LH: text (fallback display)
+  structuredData String  @default("[]") // JSON: ArrangementEvent[] (see types/arrangement.ts)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  section SongSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@map("arrangements")
+}
+
+model Songbook {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  coverImage  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  songs SongbookSong[]
+
+  @@index([userId])
+  @@map("songbooks")
+}
+
+model SongbookSong {
+  id         String   @id @default(cuid())
+  songbookId String
+  songId     String
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  songbook Songbook @relation(fields: [songbookId], references: [id], onDelete: Cascade)
+  song     Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([songbookId, songId])
+  @@index([songId])
+  @@map("songbook_songs")
+}
+
+model Rating {
+  id     String @id @default(cuid())
+  userId String
+  songId String
+  value  Int // 1..5
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song Song @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, songId])
+  @@index([songId])
+  @@map("ratings")
+}
+
+model Comment {
+  id     String @id @default(cuid())
+  userId String
+  songId String
+  content String
+  status  String @default("APPROVED") // PENDING | APPROVED | HIDDEN | REJECTED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song Song @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@index([songId])
+  @@index([status])
+  @@map("comments")
+}
+
+model SavedSong {
+  id        String   @id @default(cuid())
+  userId    String
+  songId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song Song @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, songId])
+  @@index([songId])
+  @@map("saved_songs")
+}
+
+model UserSettings {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  fontSize        String  @default("MEDIUM") // SMALL | MEDIUM | LARGE | XLARGE
+  fontFamily      String  @default("MONO") // MONO | SANS | SERIF
+  lineSpacing     String  @default("NORMAL") // TIGHT | NORMAL | LOOSE
+  noteSpacing     String  @default("NORMAL") // COMPACT | NORMAL | WIDE
+  sectionSpacing  String  @default("NORMAL") // COMPACT | NORMAL | WIDE
+  autoScrollSpeed String  @default("MEDIUM") // VERY_SLOW | SLOW | MEDIUM | FAST | VERY_FAST
+  theme           String  @default("SYSTEM") // LIGHT | DARK | SYSTEM
+  metronomeBpm    Int     @default(100)
+  transpose       Int     @default(0) // -12..12 semitones
+  showKeyboard    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String // INFO | SUBMISSION | COMMENT | RATING | SYSTEM
+  title     String
+  body      String?
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String // e.g. ADMIN_DELETED_SONG
+  entityType String // Song | Artist | User | Comment | Version …
+  entityId   String
+  metadata   String? // JSON
+  createdAt  DateTime @default(now())
+
+  admin User @relation("AdminActor", fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model SongView {
+  id        String   @id @default(cuid())
+  songId    String
+  userId    String?
+  createdAt DateTime @default(now())
+
+  song Song  @relation(fields: [songId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([songId, createdAt])
+  @@map("song_views")
+}
+
+model Report {
+  id         String   @id @default(cuid())
+  reporterId String?
+  entityType String // COMMENT | SONG | USER
+  entityId   String
+  reason     String
+  status     String   @default("PENDING") // PENDING | RESOLVED | DISMISSED
+  createdAt  DateTime @default(now())
+
+  reporter User? @relation(fields: [reporterId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([entityType, entityId])
+  @@map("reports")
+}

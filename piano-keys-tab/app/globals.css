@@ -1,0 +1,222 @@
+@import "tailwindcss";
+
+/* Class-based dark mode (next-themes toggles `.dark` on <html>). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* --------------------------------------------------------------------------
+   Semantic design tokens. Components use bg-background, text-foreground,
+   border-border… so light/dark switching is automatic everywhere.
+   -------------------------------------------------------------------------- */
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --surface: #f8fafc;
+  --surface-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
+  --input: #cbd5e1;
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --primary-soft: #eef2ff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --destructive: #e11d48;
+  --destructive-foreground: #ffffff;
+  --ring: #6366f1;
+  --star: #f59e0b;
+  --key-white: #ffffff;
+  --key-white-active: #c7d2fe;
+  --key-black: #111827;
+  --key-black-active: #4338ca;
+}
+
+.dark {
+  --background: #020617;
+  --foreground: #e2e8f0;
+  --card: #0f172a;
+  --card-foreground: #e2e8f0;
+  --surface: #0b1220;
+  --surface-foreground: #e2e8f0;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --border: #1e293b;
+  --input: #334155;
+  --primary: #818cf8;
+  --primary-foreground: #0b1220;
+  --primary-soft: #1e1b4b;
+  --secondary: #1e293b;
+  --secondary-foreground: #e2e8f0;
+  --destructive: #fb7185;
+  --destructive-foreground: #0b1220;
+  --ring: #818cf8;
+  --star: #fbbf24;
+  --key-white: #e2e8f0;
+  --key-white-active: #a5b4fc;
+  --key-black: #0f172a;
+  --key-black-active: #6366f1;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-surface: var(--surface);
+  --color-surface-foreground: var(--surface-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
+  --color-star: var(--star);
+  --color-key-white: var(--key-white);
+  --color-key-white-active: var(--key-white-active);
+  --color-key-black: var(--key-black);
+  --color-key-black-active: var(--key-black-active);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+  --font-serif: Georgia, Cambria, "Times New Roman", serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Keyboard-friendly focus everywhere. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--primary) 25%, transparent);
+  }
+}
+
+@layer utilities {
+  /* Accessible skip link — visible when focused. */
+  .skip-link {
+    position: fixed;
+    top: -100%;
+    left: 1rem;
+    z-index: 100;
+    padding: 0.75rem 1rem;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-radius: 0.5rem;
+    font-weight: 600;
+    transition: top 0.15s ease;
+  }
+  .skip-link:focus {
+    top: 1rem;
+  }
+
+  /* Piano key surfaces (hero + interactive keyboard). */
+  .piano-key-white {
+    background: linear-gradient(to bottom, #ffffff 0%, #f1f5f9 100%);
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 1px 0 #94a3b8;
+  }
+  .piano-key-black {
+    background: linear-gradient(to bottom, #334155 0%, #0f172a 100%);
+    border: 1px solid #020617;
+    box-shadow: 0 2px 4px rgb(0 0 0 / 0.4);
+  }
+
+  .tab-text-shadow {
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.6);
+  }
+}
+
+/* Subtle, purposeful motion — disabled for users who ask for less. */
+@keyframes key-press {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-note {
+  0% {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-14px);
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-key-press {
+  animation: key-press 1.6s ease-in-out infinite;
+}
+.animate-hero-note {
+  animation: hero-note 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

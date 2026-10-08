@@ -1,0 +1,27 @@
+# Third-party clone — not part of this project (see claude-skills/)
+/claude-skills/
+
+# Dependencies & build output
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Environment / secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Database files
+*.db
+*.db-journal
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
