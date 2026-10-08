@@ -262,6 +262,14 @@ Every API route is wrapped by `withApi`, which applies, in order: same-origin
   import/export can be added later without migrating stored songs.
 - **CSS animations instead of a motion library**, and **generated gradient
   covers** instead of user uploads — no binary assets, no image pipeline.
+- **`components/stream-reveal.tsx` safety net.** React reveals content that
+  streamed behind `loading.tsx`/`Suspense` from an inline script scheduled with
+  `requestAnimationFrame`, and browsers don't run animation frames for hidden
+  documents — so a page loaded in a background tab/window could sit on the
+  loading fallback until focused. This tiny client component re-runs React's
+  reveal on ordinary timers *while the document is hidden* (timers still fire,
+  throttled), and steps aside as soon as the document is visible. It is fully
+  feature-detected, so if React drops those internals it no-ops.
 
 ---
 

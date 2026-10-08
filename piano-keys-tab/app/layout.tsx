@@ -5,6 +5,7 @@ import "./globals.css";
 
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
+import { StreamReveal } from "@/components/stream-reveal";
 import { getCurrentUser } from "@/lib/session";
 import { unreadNotificationCount } from "@/lib/services";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
@@ -66,6 +67,7 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground">
+        <StreamReveal />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
