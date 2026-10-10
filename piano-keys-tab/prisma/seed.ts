@@ -23,9 +23,23 @@
  * Local development credentials (see README §Seed data):
  *   admin@pianokeystab.dev  / Admin2026!   (ADMIN)
  *   demo@pianokeystab.dev   / Demo2026!    (USER)
+ *
+ * ---------------------------------------------------------------------------
+ * `tsx prisma/seed.ts --if-empty` — the non-destructive variant run by
+ * `npm start` on a fresh deployment (Railway). It differs in three ways:
+ *
+ *   • it exits immediately once songs exist, so a restart can never wipe data;
+ *   • it never deletes accounts — the bootstrapped admin and real
+ *     registrations survive — and it reuses rows that already exist instead of
+ *     failing the unique constraints;
+ *   • it gives every demo account a random password, so the catalogue can be
+ *     published without handing out the documented logins above. Sign in with
+ *     the ADMIN_EMAIL / ADMIN_PASSWORD bootstrap account instead.
+ * ---------------------------------------------------------------------------
  */
 
 import path from "node:path";
+import { randomBytes } from "node:crypto";
 import { hash } from "bcryptjs";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../generated/prisma/client";
@@ -56,6 +70,17 @@ function resolveDatabaseUrl(): string {
 
 const adapter = new PrismaBetterSqlite3({ url: resolveDatabaseUrl() });
 const db = new PrismaClient({ adapter });
+
+/**
+ * Set when `npm start` seeds a brand-new deployment (see the file header).
+ * Off for `npm run db:seed`, which stays fully destructive by design.
+ */
+const IF_EMPTY = process.argv.includes("--if-empty");
+
+/** 32 random, URL-safe bytes — locks a demo account on a live database. */
+function lockedPassword(): string {
+  return randomBytes(24).toString("base64url");
+}
 
 /* ========================================================================== *
  * Small helpers
@@ -1015,7 +1040,7 @@ const AUDIT_ENTRIES: Array<{
  * Seed
  * ========================================================================== */
 
-async function wipe() {
+async function wipe(options: { keepUsers?: boolean } = {}) {
   await db.auditLog.deleteMany();
   await db.report.deleteMany();
   await db.notification.deleteMany();
@@ -1030,8 +1055,12 @@ async function wipe() {
   await db.songVersion.deleteMany();
   await db.song.deleteMany();
   await db.artist.deleteMany();
-  await db.userSettings.deleteMany();
-  await db.user.deleteMany();
+  // Accounts (and their settings) are only removed by the destructive
+  // development seed — `--if-empty` must preserve the bootstrapped admin.
+  if (!options.keepUsers) {
+    await db.userSettings.deleteMany();
+    await db.user.deleteMany();
+  }
 }
 
 async function createVersion(
@@ -1082,27 +1111,59 @@ async function createVersion(
 
 async function main() {
   console.log("Seeding Piano Keys Tab…");
-  await wipe();
+
+  if (IF_EMPTY) {
+    const existing = await db.song.count();
+    if (existing > 0) {
+      console.log(`  ✓ ${existing} songs already in the database — nothing to do.`);
+      return;
+    }
+    // Brand-new database: add the catalogue, but keep every account that is
+    // already there (the bootstrapped admin, any real registrations).
+    await wipe({ keepUsers: true });
+  } else {
+    await wipe();
+  }
 
   /* ---------------- users ---------------- */
   const userIds = new Map<string, string>();
   for (const spec of USERS) {
-    const user = await db.user.create({
-      data: {
-        username: spec.username,
-        email: spec.email,
-        passwordHash: await hash(spec.password, 12),
-        role: spec.role,
-        bio: spec.bio,
-        createdAt: monthsAgo(spec.createdMonthsAgo, 3),
-      },
-    });
+    // On a live database the demo accounts are created with an unusable
+    // password so only the ADMIN_EMAIL / ADMIN_PASSWORD admin can sign in.
+    const password = IF_EMPTY ? lockedPassword() : spec.password;
+    const clash = IF_EMPTY
+      ? await db.user.findFirst({
+          where: { OR: [{ username: spec.username }, { email: spec.email }] },
+          select: { id: true },
+        })
+      : null;
+
+    const user = clash ?? {
+      id: (
+        await db.user.create({
+          data: {
+            username: spec.username,
+            email: spec.email,
+            passwordHash: await hash(password, 12),
+            role: spec.role,
+            bio: spec.bio,
+            createdAt: monthsAgo(spec.createdMonthsAgo, 3),
+          },
+        })
+      ).id,
+    };
     userIds.set(spec.key, user.id);
-    await db.userSettings.create({
-      data: { userId: user.id, metronomeBpm: spec.role === "ADMIN" ? 90 : 100 },
+    await db.userSettings.upsert({
+      where: { userId: user.id },
+      update: {},
+      create: { userId: user.id, metronomeBpm: spec.role === "ADMIN" ? 90 : 100 },
     });
   }
-  console.log(`  • ${userIds.size} accounts (admin + members)`);
+  console.log(
+    IF_EMPTY
+      ? `  • ${userIds.size} demo accounts (random passwords — use your bootstrapped admin to sign in)`
+      : `  • ${userIds.size} accounts (admin + members)`
+  );
 
   /* ---------------- artists ---------------- */
   const artistIds = new Map<string, string>();
