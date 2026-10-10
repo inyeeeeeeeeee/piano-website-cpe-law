@@ -36,6 +36,17 @@ export function Modal({
   const previousFocus = useRef<HTMLElement | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  // The close handler is usually an inline arrow, so its identity changes on
+  // every render of the parent. Read it through a ref: putting it in the focus
+  // effect's dependency list would tear the dialog down and re-run its
+  // autofocus after every keystroke, yanking focus out of whatever the user is
+  // typing into.
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
@@ -43,7 +54,7 @@ export function Modal({
     previousFocus.current = document.activeElement as HTMLElement | null;
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
     const overflow = document.body.style.overflow;
@@ -63,7 +74,7 @@ export function Modal({
       window.clearTimeout(timer);
       previousFocus.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!mounted || !open) return null;
 
