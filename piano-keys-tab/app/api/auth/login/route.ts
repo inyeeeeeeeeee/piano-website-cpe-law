@@ -4,6 +4,23 @@ import { loginSchema } from "@/lib/validation";
 import { signIn } from "@/lib/auth";
 
 /**
+ * Auth.js errors expose a stable `type`, but their `name` is whatever the
+ * production minifier made of the class (it arrives as `_` on Railway), so the
+ * only classification that survives bundling is a walk down the cause chain
+ * looking at type/name/message together.
+ */
+function describeAuthError(error: unknown): string {
+  const parts: string[] = [];
+  let current: unknown = error;
+  for (let i = 0; current && i < 5; i += 1) {
+    const e = current as { type?: unknown; name?: unknown; message?: unknown };
+    parts.push(`${e.type ?? ""} ${e.name ?? ""} ${e.message ?? ""}`);
+    current = (current as { cause?: unknown }).cause;
+  }
+  return parts.join(" ");
+}
+
+/**
  * POST /api/auth/login
  * Credentials sign-in through Auth.js. The session cookie is HTTP-only and
  * signed server-side; the response never contains password material.
@@ -27,17 +44,17 @@ export const POST = withApi(
           ? new URL(outcome, "http://n/").searchParams.get("error")
           : null;
 
-      if (error === "CredentialsSignin") {
-        throw new ApiError(
-          "Invalid email/username or password",
-          401,
-          "INVALID_CREDENTIALS"
-        );
-      }
       if (error) {
+        if (error === "CredentialsSignin") {
+          throw new ApiError(
+            "Invalid email/username or password",
+            401,
+            "INVALID_CREDENTIALS"
+          );
+        }
         // MissingSecret / Configuration / AccessDenied — never expose details,
         // but never claim success either.
-        console.error(`[auth] sign-in failed: ${error}`);
+        console.error(`[auth] sign-in returned error=${error}`);
         throw new ApiError(
           "Sign-in is temporarily unavailable",
           500,
@@ -65,20 +82,17 @@ export const POST = withApi(
     } catch (error) {
       if (error instanceof ApiError) throw error;
 
-      const name = (error as Error)?.name ?? "";
-      if (
-        name === "CallbackRouteError" ||
-        name === "CredentialsSignin" ||
-        name === "AuthError" ||
-        name === "EmailSignInError"
-      ) {
+      const detail = describeAuthError(error);
+      if (/credentialssignin/i.test(detail)) {
         throw new ApiError(
           "Invalid email/username or password",
           401,
           "INVALID_CREDENTIALS"
         );
       }
-      console.error("[auth] sign-in threw:", error);
+      // MissingSecret, adapter faults, anything unrecognised: log the shape of
+      // the failure for operators, never the details, and never "success".
+      console.error(`[auth] sign-in failed: ${detail.slice(0, 400)}`);
       throw new ApiError(
         "Sign-in is temporarily unavailable",
         500,
